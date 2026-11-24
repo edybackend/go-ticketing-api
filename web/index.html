@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box office · live seat map</title>
+<style>
+  :root { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1d2430; background: #f4f6f9; }
+  body { margin: 0; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 1.5rem; }
+  p.lead { margin: 0 0 16px; color: #4a5568; }
+  .card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 2px rgb(0 0 0 / 8%); margin-bottom: 16px; overflow-x: auto; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  select, input, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd2dc; }
+  button { background: #2b5fd9; border-color: #2b5fd9; color: #fff; cursor: pointer; }
+  button.secondary { background: #fff; color: #2b5fd9; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .stage { text-align: center; color: #4a5568; font-size: .8rem; letter-spacing: .2em; margin: 4px 0 12px; border-bottom: 3px solid #cbd2dc; padding-bottom: 4px; }
+  .grid { display: grid; gap: 6px; justify-content: center; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row b { width: 18px; color: #4a5568; font-size: .8rem; }
+  .seat { width: 34px; height: 30px; border-radius: 6px 6px 3px 3px; border: none; font-size: .7rem; color: #1d2430; background: #c6f6d5; padding: 0; }
+  .seat:disabled { opacity: 1; }
+  .seat.held { background: #fbd38d; cursor: not-allowed; }
+  .seat.sold { background: #cbd2dc; color: #718096; cursor: not-allowed; }
+  .seat.mine { background: #2b5fd9; color: #fff; }
+  .seat.picked { outline: 3px solid #2b5fd9; outline-offset: 1px; }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; font-size: .85rem; color: #4a5568; }
+  .legend i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  #log { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; max-height: 180px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  #log li { padding: 3px 0; border-bottom: 1px solid #eef1f5; }
+  .ok { color: #1f7a3f; } .bad { color: #c53030; } .live { color: #2b5fd9; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Box office · live seat map</h1>
+  <p class="lead">Pick up to 6 seats and hold them for 5 minutes. Open this page in a second window: seats held there turn
+    orange here, live (Server-Sent Events). Two people can never hold the same seat.</p>
+
+  <section class="card bar">
+    <select id="event"></select>
+    <input id="customer" value="ana" size="10" aria-label="Customer">
+    <button id="hold" disabled>Hold seats</button>
+    <button id="purchase" disabled>Purchase</button>
+    <button id="release" class="secondary" disabled>Release</button>
+    <span id="timer"></span>
+  </section>
+
+  <section class="card">
+    <div class="stage">STAGE</div>
+    <div id="seats" class="grid"></div>
+    <p class="legend">
+      <span><i style="background:#c6f6d5"></i>available</span><span><i style="background:#fbd38d"></i>held</span>
+      <span><i style="background:#cbd2dc"></i>sold</span><span><i style="background:#2b5fd9"></i>yours</span>
+    </p>
+  </section>
+
+  <section class="card"><ul id="log"></ul></section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id)
+  let eventId, source, hold = null, picked = new Set(), status = {}
+
+  function log(text, cls = '') {
+    const li = document.createElement('li')
+    li.textContent = `${new Date().toLocaleTimeString()}  ${text}`
+    li.className = cls
+    $('log').prepend(li)
+  }
+
+  async function api(method, url, body) {
+    const res = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body && JSON.stringify(body) })
+    const data = res.status === 204 ? null : await res.json()
+    return { res, data }
+  }
+
+  function render() {
+    const rows = {}
+    for (const [seat, s] of Object.entries(status)) (rows[seat[0]] ??= []).push([seat, s])
+    const grid = $('seats')
+    grid.replaceChildren(...Object.keys(rows).sort().map((r) => {
+      const row = document.createElement('div')
+      row.className = 'row'
+      const label = document.createElement('b')
+      label.textContent = r
+      row.append(label)
+      for (const [seat, s] of rows[r].sort((a, b) => parseInt(a[0].slice(1)) - parseInt(b[0].slice(1)))) {
+        const b = document.createElement('button')
+        const mine = hold && hold.seats.includes(seat) && s === 'held'
+        b.className = `seat ${mine ? 'mine' : s} ${picked.has(seat) ? 'picked' : ''}`
+        b.textContent = seat.slice(1)
+        b.title = `${seat} · ${mine ? 'yours' : s}`
+        b.disabled = !mine && s !== 'available'
+        b.onclick = () => {
+          if (hold) return
+          picked.has(seat) ? picked.delete(seat) : picked.size < 6 && picked.add(seat)
+          render()
+        }
+        row.append(b)
+      }
+      return row
+    }))
+    $('hold').disabled = !!hold || picked.size === 0
+    $('purchase').disabled = !hold
+    $('release').disabled = !hold
+  }
+
+  async function load() {
+    const { data } = await api('GET', `/v1/events/${eventId}/seats`)
+    status = Object.fromEntries(data.map((s) => [s.seat, s.status]))
+    render()
+  }
+
+  function listen() {
+    source?.close()
+    source = new EventSource(`/v1/events/${eventId}/stream`)
+    source.addEventListener('seats', (e) => {
+      const change = JSON.parse(e.data)
+      for (const seat of change.seats) status[seat] = change.status
+      // Our own hold can arrive on the stream before the HTTP response: only log other people's changes.
+      const ours = change.seats.every((s) => picked.has(s) || (hold && hold.seats.includes(s)))
+      if (!ours) log(`live: ${change.seats.join(', ')} → ${change.status}`, 'live')
+      render()
+    })
+    source.onopen = () => load() // after a reconnect, reload the whole map
+  }
+
+  $('hold').onclick = async () => {
+    const seats = [...picked]
+    const { res, data } = await api('POST', `/v1/events/${eventId}/holds`, { seats, customer: $('customer').value })
+    if (res.status === 201) {
+      hold = data
+      picked.clear()
+      log(`held ${seats.join(', ')} until ${new Date(data.expiresAt).toLocaleTimeString()} (${data.id})`, 'ok')
+    } else {
+      log(`${res.status}: ${data.detail}`, 'bad')
+      picked.clear()
+      await load()
+    }
+    render()
+  }
+  $('purchase').onclick = async () => {
+    const { res, data } = await api('POST', `/v1/holds/${hold.id}/purchase`)
+    log(res.ok ? `${res.status}: order ${data.id} for ${data.seats.join(', ')}` : `${res.status}: ${data.detail}`, res.ok ? 'ok' : 'bad')
+    hold = null
+    await load()
+  }
+  $('release').onclick = async () => {
+    await api('DELETE', `/v1/holds/${hold.id}`)
+    log(`released ${hold.seats.join(', ')}`)
+    hold = null
+    render()
+  }
+  $('event').onchange = () => { eventId = $('event').value; hold = null; picked.clear(); listen() }
+
+  setInterval(() => {
+    if (!hold) { $('timer').textContent = ''; return }
+    const left = Math.max(0, Math.round((new Date(hold.expiresAt) - Date.now()) / 1000))
+    $('timer').textContent = `hold expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
+  }, 500)
+
+  api('GET', '/v1/events').then(({ data }) => {
+    $('event').replaceChildren(...data.map((e) => Object.assign(document.createElement('option'), { value: e.id, textContent: `${e.name} · ${e.venue}` })))
+    eventId = data[0].id
+    listen()
+  })
+</script>
+</body>
+</html>
