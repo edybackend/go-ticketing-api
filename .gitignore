@@ -1,0 +1,12 @@
+# Generated data
+data/
+*.db
+*.db-shm
+*.db-wal
+*.jsonl
+
+# Go
+/pipeline
+*.test
+*.out
+*.prof
