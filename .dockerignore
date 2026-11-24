@@ -1,0 +1,6 @@
+.git/
+.github/
+.claude/
+specs/
+data/
+**/*_test.go

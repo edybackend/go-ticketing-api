@@ -1,0 +1,15 @@
+name: go-ticketing-api
+
+services:
+  tickets:
+    build:
+      context: .
+    image: go-ticketing-api:local
+    ports:
+      - "8080:8080" # seat map: http://localhost:8080 (open it in two windows)
+    volumes:
+      - tickets-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  tickets-data:
