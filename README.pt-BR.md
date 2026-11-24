@@ -11,8 +11,6 @@ assentos:
 
 200 compradores para um assento: exatamente um vence. Um binário, página embutida, SQLite.
 
-Pequeno de propósito: dá para ler em uns 15 minutos e subir com um comando.
-
 ![Mapa ao vivo: vendidos em cinza, reservados por outra janela em laranja, sua reserva em azul e o registro ao vivo das mudanças de outros compradores](docs/seat-map.png)
 
 ## Como rodar
@@ -119,20 +117,9 @@ Uma mutação prova que o teste de concorrência é real: sem a condição no `U
 - **Sem sala de espera nem limite por cliente.** Uma grande abertura de vendas colocaria os compradores em fila e limitaria assentos por conta.
 - **O SQLite serializa as escritas.** Basta para um local de show; uma plataforma de ingressos particionaria por evento num banco servidor.
 
-## Engenharia assistida por IA
+## Trabalhando com um agente de IA
 
-Este projeto foi construído com o Claude Code sob controles explícitos de engenharia:
-
-- **Regras do projeto** ([`CLAUDE.md`](CLAUDE.md)) definem as regras da bilheteria que o agente segue.
-- **Hooks** ([`.claude/settings.json`](.claude/settings.json)):
-  - rodam `gofmt` em cada mudança e bloqueiam edição de dados e do `go.sum`;
-  - **recusam qualquer `UPDATE` que reserve assentos sem a condição "available"** (o compare-and-set);
-  - recusam contexto raiz, `time.Sleep` e buffers gigantes em `internal/`;
-  - rodam vet e testes com race antes de a tarefa ser dada como pronta.
-- **Spec primeiro**: cada funcionalidade começa como especificação em [`specs/`](specs), com critérios de aceite.
-- **Os mesmos portões de qualidade para cada linha**: o CI roda gofmt, vet, testes com race (×3), golangci-lint, 50 compradores simultâneos contra o contêiner e varredura de segredos.
-
-A arquitetura é minha, e eu reviso cada mudança.
+Toda a correção da bilheteria está numa cláusula `WHERE`. Um hook em [`.claude/`](.claude) recusa qualquer `UPDATE` que reserve assentos sem ela, além das armadilhas comuns de Go (contexto raiz, `time.Sleep`, buffers gigantes). As regras da bilheteria estão no [`CLAUDE.md`](CLAUDE.md).
 
 ## Licença
 

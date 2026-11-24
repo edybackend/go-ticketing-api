@@ -10,8 +10,6 @@ A box office for live events, in **Go**, for the moment tickets go on sale and e
 
 200 buyers for one seat: exactly one wins. One binary, embedded page, SQLite.
 
-Small on purpose: it can be read in about 15 minutes and started with one command.
-
 ![Live seat map: sold seats in grey, seats held by another window in orange, your hold in blue, and the live log of other buyers' changes](docs/seat-map.png)
 
 ## Quick start
@@ -118,20 +116,9 @@ A mutation proves the concurrency test is real: without the condition in the `UP
 - **No waiting room or per-customer limits.** A big on-sale would queue buyers and cap seats per account.
 - **SQLite serializes writes.** That is fine for one venue; a ticketing platform would partition by event on a server database.
 
-## AI-Assisted Engineering
+## Working with an AI agent
 
-This project was built with Claude Code under explicit engineering controls:
-
-- **Project rules** ([`CLAUDE.md`](CLAUDE.md)) define the box office rules the agent must follow.
-- **Hooks** ([`.claude/settings.json`](.claude/settings.json)):
-  - run `gofmt` on every change and block edits to data and `go.sum`;
-  - **refuse any `UPDATE` that holds seats without the "available" condition** (the compare-and-set);
-  - refuse root contexts, `time.Sleep` and huge channel buffers in `internal/`;
-  - run vet and race tests before a task is considered done.
-- **Spec-first**: each feature starts as a spec in [`specs/`](specs) with acceptance criteria.
-- **Same quality gates for every line**: CI runs gofmt, vet, race tests (×3), golangci-lint, 50 concurrent buyers against the container, and secret scanning.
-
-I own the architecture and review every change.
+The whole correctness of the box office sits in one `WHERE` clause. A hook in [`.claude/`](.claude) refuses any `UPDATE` that holds seats without it, plus the usual Go traps (root contexts, `time.Sleep`, huge buffers). The box office rules are in [`CLAUDE.md`](CLAUDE.md).
 
 ## License
 
